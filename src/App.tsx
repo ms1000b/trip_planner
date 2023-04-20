@@ -2,7 +2,7 @@ import { Suspense, lazy } from 'react';
 import './App.css';
 
 import Loading from './shared/Loading';
-const MapComponent = lazy(() => import(`./components/MapComponent`));
+import MapComponent from './components/MapComponent';
 
 function App() {
   return (
