@@ -44,3 +44,13 @@
 div#getting-route span {
   font-weight: 700;
 }
+
+#clear-markers {
+  position: absolute;
+  z-index: 1;
+
+  top: 2rem;
+  right: 2rem;
+
+  padding: 0.4rem 0.8rem;
+}

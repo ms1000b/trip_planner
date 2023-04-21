@@ -43,9 +43,23 @@ export default memo(function MapComponent(): JSX.Element {
   }, []);
 
   /**
+   * Function to clear the markers on the screen
+   */
+  const ClearMarkers = useCallback(() => {
+    setMarkers([]);
+  }, []);
+
+  const mapRoutes = useMemo(() => [...routes.values()], [routes]);
+
+  /**
    * Function to update the routes
    */
   const UpdateRoutes = useCallback(() => {
+    if (markers.length === 0 && mapRoutes.length) {
+      // cleared markers
+      setRoutes(new Map());
+      return;
+    }
     if (markers.length > 1 && markers.length !== mapRoutes.length + 1) {
       const start = markers[markers.length - 2];
       const end = markers[markers.length - 1];
@@ -98,7 +112,7 @@ export default memo(function MapComponent(): JSX.Element {
 
       // ...
     }
-  }, [markers, routes]);
+  }, [markers, routes, mapRoutes]);
 
   /**
    * Function that zooms as per markers on the map
@@ -130,6 +144,11 @@ export default memo(function MapComponent(): JSX.Element {
   return (
     <div id='map-wrapper'>
       {gettingRoutes && <Toast id={'getting-route'} text={'Getting Route...'} />}
+      {markers.length ? (
+        <button id='clear-markers' onClick={ClearMarkers}>
+          Clear
+        </button>
+      ) : null}
       <MapBox
         onClick={AddMarkerToMapBox}
         center={[77.216721, 28.6448]} // default center
