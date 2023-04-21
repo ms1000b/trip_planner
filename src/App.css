@@ -12,7 +12,7 @@
   align-items: center;
 }
 
-#getting-location {
+#getting-route {
   display: flex;
   justify-content: flex-start;
   align-items: center;
@@ -30,7 +30,7 @@
   border-radius: 0.25rem;
 }
 
-div#getting-location span {
+div#getting-route span {
   font-weight: 700;
 }
 
