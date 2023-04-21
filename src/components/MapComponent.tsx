@@ -1,13 +1,14 @@
 // TODO
-// memo: move gettingCurrentLocation & gettingRoutes up and pass setters as props: saves 1 re-render
+// memo: move gettingRoutes up to parent and pass setters as props to this component: saves 1 re-render
 
 // cursor pointer on map
 // recentering issue to center on adding marker: best solution: fitBounds or last marker
 
 // rendering routes with distance label: Added layer, but not working
 // fallback for null route: Retry button & function
+// double click on  map does not get routes for last click
 
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMapboxGl, { Layer, Feature } from 'react-mapbox-gl';
 
 import Toast from './shared/Toast';
@@ -117,7 +118,7 @@ export default memo(function MapComponent(): JSX.Element {
   /**
    * Function that zooms as per markers on the map
    */
-  const FitBounds = () => {
+  const FitBounds = useCallback(() => {
     if (markers.length > 0 && mapRef.current) {
       // TODO
       // Extract coordinates from markers
@@ -130,13 +131,11 @@ export default memo(function MapComponent(): JSX.Element {
       //   duration: 0
       // });
     }
-  };
+  }, [markers, mapRef]);
 
   // update routes when markers are added/updated
   useEffect(UpdateRoutes, [markers]);
   useEffect(FitBounds, [markers]);
-
-  const mapRoutes = useMemo(() => [...routes.values()], [routes]);
 
   // PS: markers = [ { lat: number; lng: number }, {}, {}, {}, {}, {}, {}, {}, ...]
   // PS: routes = Map -> { 0: [{}, {}, {}], 1: [{}, {}, {}, ...], 2: [{}, {}, ...]} // routes from 0 to 1, 1 to 2 and 2 to 3
@@ -175,7 +174,35 @@ export default memo(function MapComponent(): JSX.Element {
           }}
         >
           {mapRoutes.map((mapRoute: MapRoute | null, index: number) => {
-            if (mapRoute) return <Feature key={`line-${index}-${mapRoute.distance}`} coordinates={mapRoute.geometry.coordinates} />;
+            if (mapRoute) return <Feature key={`line-${index}`} coordinates={mapRoute.geometry.coordinates} />;
+            return <Feature key={`line-${index}`} coordinates={[]} />;
+          })}
+        </Layer>
+
+        <Layer
+          type='line'
+          id='failed-to-fetch-routes'
+          paint={{
+            'line-color': 'red',
+            'line-width': 2
+          }}
+        >
+          {mapRoutes.map((mapRoute: MapRoute | null, index: number) => {
+            if (!mapRoute)
+              return (
+                <Feature
+                  key={`line-${index}`}
+                  coordinates={
+                    markers[index] && markers[index + 1]
+                      ? [
+                          [markers[index].lng, markers[index].lat],
+                          [markers[index + 1].lng, markers[index + 1].lat]
+                        ]
+                      : []
+                  }
+                />
+              );
+            return <Feature key={`line-${index}`} coordinates={[]} />;
           })}
         </Layer>
 
