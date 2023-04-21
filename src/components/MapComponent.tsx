@@ -37,6 +37,11 @@ export default memo(function MapComponent(): JSX.Element {
     const newMarker = { lat: lngLat.lat, lng: lngLat.lng };
     // Update the state with the new marker
     setMarkers((prevMarkers) => [...prevMarkers, newMarker]);
+
+    map.flyTo({
+      center: [newMarker.lng, newMarker.lat],
+      essential: true
+    });
   }, []);
 
   /**
@@ -65,8 +70,6 @@ export default memo(function MapComponent(): JSX.Element {
           /* API error */ else throw new Error(((await response.json()) as GetRoutesErrorResponse).message);
         })
         .then((data: GetRoutesSuccessResponse) => {
-          console.log(data);
-
           if (data) {
             if (data.routes) {
               if (data.routes.length) {
@@ -111,6 +114,7 @@ export default memo(function MapComponent(): JSX.Element {
       <MapBox
         onClick={AddMarkerToMapBox}
         center={[77.216721, 28.6448]} // default center
+        // fitBounds={[]} // need to add this to stop map to move to center on every marker addition
         zoom={[15]} // default zoom
         style='mapbox://styles/mapbox/streets-v12' // latest version
         containerStyle={{
@@ -133,7 +137,7 @@ export default memo(function MapComponent(): JSX.Element {
           }}
         >
           {[...routes.values()].map((mapRoute: MapRoute | null, index: number) => {
-            if (mapRoute) return <Feature coordinates={mapRoute.geometry.coordinates} />;
+            if (mapRoute) return <Feature key={`line-${mapRoute.distance}`} coordinates={mapRoute.geometry.coordinates} />;
           })}
         </Layer>
       </MapBox>
