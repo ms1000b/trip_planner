@@ -19,11 +19,14 @@
     "web-vitals": "^2.1.0"
   },
   "scripts": {
-    "check_env_variables": "",
-    "prestart": "yarn install",
+    "check_env_variables": "node prebuild.js",
+
+    "prestart": "yarn install && yarn run check_env_variables",
     "start": "react-scripts start",
-    "prebuild": "",
+    
+    "prebuild": "yarn run prestart",
     "build": "react-scripts build",
+    
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -44,5 +47,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
+  },
+  "devDependencies": {}
 }
