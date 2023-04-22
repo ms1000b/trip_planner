@@ -17,6 +17,8 @@
 //   process.env[key] = envVariables[key];
 // });
 
+process.env.CI = false; // To prevent treating warnings as errors in CI mode
+
 // check if the environment variables required are there
 const requiredVars = ['REACT_APP_MAPBOX_ACCESS_TOKEN'];
 
