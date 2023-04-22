@@ -25,6 +25,8 @@ jobs:
 
       - name: Build React app
         run: yarn run build # prebuild installs dependencies & checks for environment variables
+        env:
+          REACT_APP_MAPBOX_ACCESS_TOKEN: ${{ secrets.REACT_APP_MAPBOX_ACCESS_TOKEN }}
 
       - name: Upload to S3
         run: |
