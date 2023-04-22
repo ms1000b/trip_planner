@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+
 // TODO
 // memo: move gettingRoutes up to parent and pass setters as props to this component: saves 1 re-render
 
