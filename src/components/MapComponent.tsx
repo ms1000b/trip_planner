@@ -1,229 +1,239 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 
-// TODO
-// memo: move gettingRoutes up to parent and pass setters as props to this component: saves 1 re-render
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import mapboxgl, { GeoJSONSource } from 'mapbox-gl';
 
-// cursor pointer on map
-// recentering issue to center on adding marker: best solution: fitBounds or last marker
+import { MAPBOX_ACCESS_TOKEN, MAPBOX_STYLE } from '../config';
+import { MapLocation } from '../types';
+import { GetDistance } from '../utils';
 
-// rendering routes with distance label: Added layer, but not working
-// fallback for null route: Retry button & function
-// double click on  map does not get routes for last click
-
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReactMapboxGl, { Layer, Feature } from 'react-mapbox-gl';
-
-import Toast from './shared/Toast';
-
-import { MAPBOX_ACCESS_TOKEN, MAPBOX_DIRECTIONS_API_URL, MAPBOX_STYLE } from '../config';
-import { GetRoutesErrorResponse, GetRoutesSuccessResponse, MapLocation, MapRoute } from '../types';
-
-const MapBox = ReactMapboxGl({
-  accessToken: MAPBOX_ACCESS_TOKEN
-});
+mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
 export default memo(function MapComponent(): JSX.Element {
-  const mapRef = useRef(null);
+  // Map container & Map
+  const map = useRef<mapboxgl.Map | null>(null);
+  const mapContainer = useRef<HTMLDivElement>(null);
 
-  const [gettingRoutes, setGettingRoutes] = useState<boolean>(false);
+  // Map data
+  const [lng, setLng] = useState(77.315292);
+  const [lat, setLat] = useState(28.395403);
+  const [zoom, setZoom] = useState(15);
 
   // markers on the map
+  const geojson = useRef({
+    type: 'FeatureCollection',
+    features: []
+  });
   const [markers, setMarkers] = useState<Array<MapLocation>>([]);
 
-  // routes between markers where key is the starting index of the route
-  const [routes, setRoutes] = useState<Map<number, MapRoute | null>>(new Map());
+  /**
+   * Function to initialize the map
+   * @returns {void}
+   */
+  const InitMap = useCallback((): void => {
+    // map, mapContainer, geojson,
+    if (map.current) return; // map already initialized
+
+    // init map
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current as HTMLElement,
+      style: MAPBOX_STYLE,
+      center: [lng, lat],
+      zoom: zoom
+    });
+
+    // add geojson data sources & layers (markers and routes)
+    // 1. markers-source , markers-layer
+    // 2. routes-source , routes-layer
+    // 3. distances-layer (used routes-source)
+    map.current.on('load', function () {
+      if (map.current) {
+        // Add the default empty GeoJSON source to the map as markers-source
+        map.current.addSource('markers-source', {
+          type: 'geojson',
+          data: geojson.current as any
+        });
+
+        // Add a layer for the markers as markers-layer
+        map.current.addLayer({
+          id: 'markers-layer',
+          type: 'circle',
+          source: 'markers-source',
+          paint: {
+            'circle-color': 'red',
+            'circle-radius': 10
+          }
+        });
+
+        // Add the default empty GeoJSON source to the map as routes-source
+        map.current.addSource('routes-source', {
+          type: 'geojson',
+          data: geojson.current as any
+        });
+
+        // Add a layer for the routes as routes-layer
+        map.current.addLayer({
+          id: 'routes-layer',
+          type: 'line',
+          source: 'routes-source',
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
+          paint: {
+            'line-color': '#888',
+            'line-width': 5
+          }
+        });
+
+        // Add a layer for the distances as distances-layer
+        map.current.addLayer({
+          id: 'distances-layer',
+          type: 'symbol',
+          source: 'routes-source',
+          paint: {
+            'text-color': '#000'
+          },
+          layout: {
+            'symbol-placement': 'line-center',
+            'text-field': ['get', 'description'] // calculated distance
+          }
+        });
+      }
+    });
+
+    // add click listener on the map
+    map.current.on('click', AddMarkerToMapBox);
+  }, [map, mapContainer, geojson]);
 
   /**
    * Function to add a marker position to markers array
    */
-  const AddMarkerToMapBox = useCallback((map: any, event: any) => {
-    // Get the clicked location's longitude and latitude
-    const { lngLat } = event;
-    // Create a new marker object with the clicked position
-    const newMarker = { lat: lngLat.lat, lng: lngLat.lng };
-    // Update the state with the new marker
-    setMarkers((prevMarkers) => [...prevMarkers, newMarker]); // TODO: optimise
-  }, []);
-
-  /**
-   * Function to clear the markers on the screen
-   */
-  const ClearMarkers = useCallback(() => {
-    setMarkers([]);
-  }, []);
-
-  const mapRoutes = useMemo(() => [...routes.values()], [routes]);
-
-  /**
-   * Function to update the routes
-   */
-  const UpdateRoutes = useCallback(() => {
-    if (markers.length === 0 && mapRoutes.length) {
-      // cleared markers
-      setRoutes(new Map());
-      return;
-    }
-    if (markers.length > 1 && markers.length !== mapRoutes.length + 1) {
-      const start = markers[markers.length - 2];
-      const end = markers[markers.length - 1];
-
-      let routesOfLastTwoPoints: MapRoute | null = null;
-
-      // find routes
-      const url = new URL(MAPBOX_DIRECTIONS_API_URL.replace(`START_LNG`, start.lng.toString()).replace(`START_LAT`, start.lat.toString()).replace(`END_LNG`, end.lng.toString()).replace(`END_LAT`, end.lat.toString()));
-
-      url.searchParams.set(`alternatives`, `false`);
-      url.searchParams.set(`annotations`, `distance`);
-      url.searchParams.set(`geometries`, `geojson`);
-      url.searchParams.set(`language`, `en`);
-      url.searchParams.set(`access_token`, MAPBOX_ACCESS_TOKEN);
-
-      setGettingRoutes(true);
-      fetch(url.toString())
-        .then(async (response) => {
-          if (response.ok) return response.json();
-          /* API error */ else throw new Error(((await response.json()) as GetRoutesErrorResponse).message);
-        })
-        .then((data: GetRoutesSuccessResponse) => {
-          if (data) {
-            if (data.routes) {
-              if (data.routes.length) {
-                routesOfLastTwoPoints = data.routes[0];
+  const AddMarkerToMapBox = useCallback(
+    (event: mapboxgl.MapMouseEvent & mapboxgl.EventData) => {
+      try {
+        if (map.current) {
+          if (event) {
+            // If the user clicked on one of the markers, get its information.
+            const features = map.current.queryRenderedFeatures(event.point, {
+              layers: ['markers-layer']
+            });
+            if (!features.length) {
+              // any existing marker is not clicked
+              // Get the clicked location's longitude and latitude
+              const { lngLat } = event;
+              if (lngLat) {
+                if (lngLat.lat && lngLat.lng) {
+                  // Create a new marker object with the clicked position
+                  const newMarker = { lat: lngLat.lat, lng: lngLat.lng };
+                  // Update the state with the new marker
+                  setMarkers((prevMarkers) => [...prevMarkers, newMarker]);
+                } else {
+                  throw new Error('Longitude or Latitude not present in the lngLat object');
+                }
               } else {
-                throw new Error('Data received from API does not contain any routes');
+                throw new Error('Location lngLat object is undefined from event object');
               }
-            } else {
-              throw new Error('Data received from API does not contain routes key');
             }
           } else {
-            throw new Error('No data received from API');
+            throw new Error('Event object MapMouseEvent not found');
           }
-        })
-        .catch((err: Error) => {
-          // default Fetch error | thrown: API Error | thrown: key not found Error
-          const message = `Error fetching directions: ${err.message}`;
-          alert(message);
-          console.error(message, err);
-        })
-        .finally(() => {
-          const newRoutes = new Map(routes); // TODO: optimise
-          newRoutes.set(markers.length - 2, routesOfLastTwoPoints); // markers.length - 2 indicates the start of the route
-          setRoutes(newRoutes);
-
-          setGettingRoutes(false);
-        });
-
-      // ...
-    }
-  }, [markers, routes, mapRoutes]);
+        }
+      } catch (error: Error | any) {
+        alert(`Error while adding marker: ${error.message}`);
+        console.error(error);
+      }
+    },
+    [map]
+  );
 
   /**
-   * Function that zooms as per markers on the map
+   * Function to show markers on the map
    */
-  const FitBounds = useCallback(() => {
-    if (markers.length > 0 && mapRef.current) {
-      // TODO
-      // Extract coordinates from markers
-      // const coordinates = markers.map((marker: MapLocation) => [marker.lng, marker.lat]);
-      // // Calculate map bounds
-      // const bounds = coordinates.reduce((bounds, coord) => bounds.extend(coord), new mapboxgl.LngLatBounds());
-      // // Fit map to bounds with padding
-      // mapRef.current.fitBounds(bounds, {
-      //   padding: 40,
-      //   duration: 0
-      // });
+  const ShowMarkersOnMap = useCallback(() => {
+    // markers.length === 0 || markers.length++
+    if (markers.length) {
+      const addedMarker = markers[markers.length - 1];
+      // Create a new marker feature
+      const marker = {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [addedMarker.lng, addedMarker.lat]
+        }
+      };
+
+      geojson.current.features.push(marker as never);
+    } else {
+      // markers cleared
+      geojson.current.features = [];
     }
-  }, [markers, mapRef]);
 
-  // update routes when markers are added/updated
-  useEffect(UpdateRoutes, [markers]);
-  useEffect(FitBounds, [markers]);
+    if (map.current) {
+      if (map.current.getSource(`markers-source`))
+        // update data of map source `markers-source` as geojson.current
+        (map.current.getSource(`markers-source`) as GeoJSONSource).setData(geojson.current as any);
+      // sample geojson data for markers
+      // {
+      //   type: 'FeatureCollection',
+      //   features: [{
+      //       type: 'Feature',
+      //       geometry: {
+      //       type: 'Point',
+      //       coordinates: [addedMarker.lng, addedMarker.lat]
+      //     }
+      //   }, {}, {}]
+      // }
 
-  // PS: markers = [ { lat: number; lng: number }, {}, {}, {}, {}, {}, {}, {}, ...]
-  // PS: routes = Map -> { 0: [{}, {}, {}], 1: [{}, {}, {}, ...], 2: [{}, {}, ...]} // routes from 0 to 1, 1 to 2 and 2 to 3
+      if (markers.length > 1) {
+        if (map.current.getSource(`routes-source`))
+          // update data of map source `routes-source` as geojson.current (after mapping)
+          (map.current.getSource(`routes-source`) as GeoJSONSource).setData({
+            ...geojson.current,
+            features: geojson.current.features
+              .map((feature: any, index: number) => {
+                if (index < markers.length - 1)
+                  return {
+                    ...feature,
+                    properties: {
+                      description: `${GetDistance(markers[index], markers[index + 1])} km`
+                    },
+                    geometry: {
+                      ...feature.geometry,
+                      type: 'LineString',
+                      coordinates: [
+                        [markers[index].lng, markers[index].lat], // from marker
+                        [markers[index + 1].lng, markers[index + 1].lat] // to marker
+                      ]
+                    }
+                  };
+                return undefined;
+              })
+              .filter((feature: any) => feature)
+          } as any);
 
-  return (
-    <div id='map-wrapper'>
-      {gettingRoutes && <Toast id={'getting-route'} text={'Getting Route...'} />}
-      {markers.length ? (
-        <button id='clear-markers' onClick={ClearMarkers}>
-          Clear
-        </button>
-      ) : null}
-      <MapBox
-        onClick={AddMarkerToMapBox}
-        center={[77.216721, 28.6448]} // default center
-        zoom={[15]} // default zoom
-        style={MAPBOX_STYLE}
-        containerStyle={{
-          height: '100%',
-          width: '100%'
-        }}
-        ref={mapRef}
-      >
-        <Layer type='circle' id='markers' paint={{ 'circle-color': 'red', 'circle-radius': 10 }}>
-          {markers.map((marker: MapLocation, index: number) => (
-            <Feature key={`marker-${marker.lng}-${marker.lat}`} coordinates={[marker.lng, marker.lat]} />
-          ))}
-        </Layer>
+        // sample geojson data for routes
+        // {
+        //   type: 'FeatureCollection',
+        //   features: [{
+        //       type: 'Feature',
+        //       geometry: {
+        //       type: 'LineString',
+        //       coordinates: [[fromMarker.lng, fromMarker.lat], [toMarker.lng, toMarker.lat]]
+        //     }
+        //   }, {}, {}]
+        // }
+      }
+    }
+  }, [markers, map, geojson]);
 
-        <Layer
-          type='line'
-          id='routes'
-          paint={{
-            'line-color': 'blue',
-            'line-width': 2
-          }}
-        >
-          {mapRoutes.map((mapRoute: MapRoute | null, index: number) => {
-            if (mapRoute) return <Feature key={`line-${index}`} coordinates={mapRoute.geometry.coordinates} />;
-            return <Feature key={`line-${index}`} coordinates={[]} />;
-          })}
-        </Layer>
+  // init map
+  useEffect(InitMap, []);
 
-        <Layer
-          type='line'
-          id='failed-to-fetch-routes'
-          paint={{
-            'line-color': 'red',
-            'line-width': 2
-          }}
-        >
-          {mapRoutes.map((mapRoute: MapRoute | null, index: number) => {
-            if (!mapRoute)
-              return (
-                <Feature
-                  key={`line-${index}`}
-                  coordinates={
-                    markers[index] && markers[index + 1]
-                      ? [
-                          [markers[index].lng, markers[index].lat],
-                          [markers[index + 1].lng, markers[index + 1].lat]
-                        ]
-                      : []
-                  }
-                />
-              );
-            return <Feature key={`line-${index}`} coordinates={[]} />;
-          })}
-        </Layer>
+  // show added markers on the map whenever markers state is updated
+  useEffect(ShowMarkersOnMap, [markers]);
 
-        {/* <Layer
-          type='symbol'
-          id='distances'
-          layout={{
-            'text-field': `Hiiii`,
-            'text-size': 12,
-            'symbol-placement': 'line',
-            'symbol-geometry': 'line',
-            'text-offset': [0, -10]
-          }}
-        >
-          {mapRoutes.map((mapRoute: MapRoute | null, index: number) => {
-            if (mapRoute) return <Feature key={`line-${index}-${mapRoute.distance}`} coordinates={mapRoute.geometry.coordinates} />;
-          })}
-        </Layer> */}
-      </MapBox>
-    </div>
-  );
+  // PS: markers = Array<MapLocation>
+
+  return <div ref={mapContainer} id='map-wrapper'></div>;
 });
