@@ -13,20 +13,16 @@
     "mapbox-gl": "^2.14.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-mapbox-gl": "^5.1.1",
     "react-scripts": "5.0.1",
     "typescript": "^4.4.2",
     "web-vitals": "^2.1.0"
   },
   "scripts": {
     "check_env_variables": "node prebuild.js",
-
-    "prestart": "yarn install && yarn run check_env_variables",
+    "prestart": "yarn install",
     "start": "react-scripts start",
-    
     "prebuild": "yarn run prestart",
     "build": "react-scripts build",
-    
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -48,5 +44,7 @@
       "last 1 safari version"
     ]
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/mapbox-gl": "^2.7.11"
+  }
 }
